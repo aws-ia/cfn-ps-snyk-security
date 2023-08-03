@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploys the Snyk Container IAM Role and automatically creates a new Snyk Organization (qs-1sd1mkoa1)
+Metadata:
+  LICENSE: Apache License, Version 2.0
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Snyk Container integration
+        Parameters:
+          - SnykGroupId
+          - SnykAuthToken
+          - SnykAWSAccountNumber
+    ParameterLabels:
+      SnykGroupId:
+        default: Snyk group ID to associate with your organization
+      SnykAuthToken:
+        default: Snyk API authentication token for the administrator (preferably a service-account token)
+      SnykOrgPatternPrefix:
+        default: Snyk organization name prefix
+      SnykAWSAccountNumber:
+        default: Snyk AWS account ID
+Parameters:
+  SnykGroupId:
+    Description: "Enter your Snyk group ID. To locate your group ID, log in to https://app.snyk.io, and navigate to account settings."
+    Type: String
+    AllowedPattern: '[a-z0-9-]{36}'
+    MinLength: 1
+  SnykAuthToken:
+    Description: >
+      Enter you account's API token. To locate your token, log in to https://app.snyk.io, and navigate to account settings. We recommend that you use a service-account token, not a personal API token. The token must have group-administrator permissions.
+    Type: String
+    AllowedPattern: '[a-z0-9-]{36}'
+    MinLength: 1
+    NoEcho: True
+  SnykOrgPatternPrefix:
+    Description: "Provide a prefix string for your organization's Snyk group."
+    Type: String
+    AllowedPattern: ^[0-9a-zA-z]*
+    MinLength: 1
+  SnykAWSAccountNumber:
+    Description: "Snyk's AWS account ID that assumes a role in your account."
+    Type: String
+  QSS3BucketName:
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$
+    ConstraintDescription:
+      'The S3 bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-), but it cannot start or end with a hyphen.'
+    Default: aws-quickstart
+    Description: 'Name of the S3 bucket for your copy of the deployment assets. Keep the default name unless you are customizing the template. Changing the name updates code references to point to a new location.'
+    Type: String
+  QSS3BucketRegion:
+    Default: 'us-east-1'
+    Description: 'AWS Region where the S3 bucket (QSS3BucketName) is hosted. Keep the default Region unless you are customizing the template. Changing the Region updates code references to point to a new location. When using your own bucket, specify the Region.'
+    Type: String
+  QSS3KeyPrefix:
+    AllowedPattern: ^[0-9a-zA-Z-/.]*$
+    ConstraintDescription:
+      'The S3 key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slashes (/). End the prefix with a forward slash.'
+    Default: quickstart-snyk-security/
+    Description:
+      'S3 key prefix that is used to simulate a folder for your copy of the deployment assets. Keep the default prefix unless you are customizing the template. Changing the prefix updates code references to point to a new location.'
+    Type: String
+Conditions:
+  UsingDefaultBucket: !Equals
+    - !Ref QSS3BucketName
+    - 'aws-quickstart'
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  AddSnykIntegrationLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !If [UsingDefaultBucket, !Sub '${QSS3BucketName}-${AWS::Region}', !Ref QSS3BucketName]
+        S3Key: !Sub '${QSS3KeyPrefix}functions/packages/AddSnykIntegration/lambda.zip'
+      Environment:
+        Variables:
+          awsRegion: !Ref QSS3BucketRegion
+          awsRoleArn: !GetAtt SnykECRIntegrationRole.Arn
+          groupId: !Ref SnykGroupId
+          orgPatternPrefix: !Ref SnykOrgPatternPrefix
+          authToken: !Ref SnykAuthToken
+      Handler: lambda_function.handler
+      Runtime: nodejs14.x
+      Timeout: 30
+      Role: !GetAtt LambdaExecutionRole.Arn
+  CreateSnykIntegration:
+    Type: Custom::CreateSnykIntegration
+    Properties:
+      ServiceToken: !GetAtt AddSnykIntegrationLambdaFunction.Arn
+      Region: !Ref 'AWS::Region'
+      SnykAuthToken: !Ref 'SnykAuthToken'
+      SnykGroupId: !Ref 'SnykGroupId'
+      SnykOrgPatternPrefix: !Ref 'SnykOrgPatternPrefix'
+  SnykECRIntegrationRole:
+    Type: 'AWS::IAM::Role'
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - EIAMPolicyWildcardResource
+          ignore_reason:
+            - EIAMPolicyWildcardResource: "Wildcard resource is required"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${SnykAWSAccountNumber}:root
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Ref 'SnykGroupId'
+      Path: /snyk/
+      Policies:
+        - PolicyName: AmazonEC2ContainerRegistryReadOnlyForSnyk
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecr:GetAuthorizationToken'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  [
+                    'ecr:GetLifecyclePolicyPreview',
+                    'ecr:GetDownloadUrlForLayer',
+                    'ecr:BatchGetImage',
+                    'ecr:DescribeImages',
+                    'ecr:GetAuthorizationToken',
+                    'ecr:DescribeRepositories',
+                    'ecr:ListTagsForResource',
+                    'ecr:ListImages',
+                    'ecr:BatchCheckLayerAvailability',
+                    'ecr:GetRepositoryPolicy',
+                    'ecr:GetLifecyclePolicy'
+                  ]
+                Resource: "*"
+Outputs:
+  AWSRegion:
+    Description: AWS Region for your Snyk integration.
+    Value: !Sub '${AWS::Region}'
+  SnykECRIntegrationRole:
+    Description: Amazon Resource Name (ARN) role for your Snyk integration.
+    Value: !GetAtt 'SnykECRIntegrationRole.Arn'
+  NewSnykOrg:
+    Description: Specify your organization name.
+    Value: !GetAtt CreateSnykIntegration.newOrgId
