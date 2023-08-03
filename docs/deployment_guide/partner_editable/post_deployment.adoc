@@ -1,3 +1,53 @@
-// Include any postdeployment steps here, such as steps necessary to test that the deployment was successful. If there are no postdeployment steps, leave this file empty.
+//Include any postdeployment steps here, such as steps necessary to test that the deployment was successful. If there are no postdeployment steps leave this file empty.
+:xrefstyle: short
 
-== Postdeployment steps
+== Post-deployment steps
+
+=== Check CloudFormation outputs
+
+In the AWS CloudFormation console, navigate to the *Outputs* tab on the root stack that you deployed, as shown in <<cfn-outputs>>. You will copy and paste these values into the Snyk UI in subsequent steps.
+
+[#cfn-outputs]
+.CloudFormation Outputs tab
+image::../docs/deployment_guide/images/cfn-outputs.png[CloudFormation Outputs tab,width=100%,height=100%]
+
+=== Snyk Contaner integration
+
+==== Configure the integration in Snyk
+
+NOTE: If you used the *Snyk Container integration with automatic installation* option to deploy Snyk Container integration with Amazon ECR, you can ignore this section.
+
+In the Snyk UI, navigate to your organization's *Integrations* page, then click on *ECR* in the *Container registries* section. Copy the values from the CloudFormation outputs into the Snyk UI as shown in <<ecr-configuration>>.
+
+[#ecr-configuration]
+.ECR configuration
+image::../docs/deployment_guide/images/ecr-configuration.png[ECR configuration,width=100%,height=100%]
+
+==== Import your container images into Snyk
+
+After installing Snyk Container integration with Amazon ECR, import your container images into Snyk.
+
+. Log in to your Snyk account.
+. Navigate to *Projects*, choose *Add projects*, and then choose *Amazon ECR*.
+. Select either single or multiple images.
+. Choose *Add selected images*.
+
+For more information, refer to https://docs.snyk.io/scan-containers?utm_campaign=Snyk-Security-QS&utm_medium=Partner&utm_source=AWS[Scan Containers^].
+
+=== Snyk Cloud integration
+
+==== Configure the integration in Snyk
+
+. In the Snyk UI, navigate to your organization's *Integrations* page.
+. In the *Cloud platforms* section, choose *AWS*.
+. Copy the values from the CloudFormation outputs to the AWS configuration user interface, as shown in <<aws-configuration>>.
+
+[#aws-configuration]
+.AWS configuration
+image::../docs/deployment_guide/images/aws-configuration.png[ECR configuration,width=100%,height=100%]
+
+==== Scan your AWS Cloud environment with Snyk
+
+After you install Snyk Cloud integration and Snyk scans your AWS environment, it may take several minutes for scan results to appear. In your Snyk organization, choose *Cloud* to view the scan results.
+
+For more information, refer to https://docs.snyk.io/scan-cloud-deployment/snyk-cloud?utm_campaign=Snyk-Security-QS&utm_medium=Partner&utm_source=AWS[Snyk Cloud^].
